@@ -33,7 +33,7 @@ function getAiClient(): { ai: GoogleGenAI; candidateModels: string[] } | null {
 
   return {
     ai,
-    candidateModels: ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'],
+    candidateModels: ['gemini-3.1-flash-lite', 'gemini-3.8-flash'],
   };
 }
 
@@ -283,7 +283,10 @@ Additional Context:
 
     // Validate and sanitize data
     const validatedData = {
-      title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'Community Assistance Need',
+      title:
+        typeof parsed.title === 'string' && parsed.title.trim()
+          ? parsed.title.trim()
+          : 'Community Assistance Need',
       summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
       category: [
         'food_nutrition',
@@ -298,25 +301,58 @@ Additional Context:
       urgency: ['low', 'medium', 'high', 'critical'].includes(parsed.urgency)
         ? parsed.urgency
         : 'medium',
-      urgencyExplanation: parsed.urgencyExplanation || 'Assessed based on stated humanitarian urgency.',
-      statedQuantities: Array.isArray(parsed.statedQuantities) ? parsed.statedQuantities : [],
+      urgencyExplanation:
+        typeof parsed.urgencyExplanation === 'string' && parsed.urgencyExplanation.trim()
+          ? parsed.urgencyExplanation.trim()
+          : 'Assessed based on stated humanitarian urgency.',
+      statedQuantities: Array.isArray(parsed.statedQuantities)
+        ? parsed.statedQuantities.map((sq: Record<string, unknown>) => ({
+            resourceType: String(sq?.resourceType || 'Community Resource'),
+            quantityNeeded: Number(sq?.quantityNeeded) || 1,
+            quantityAvailable: Number(sq?.quantityAvailable) || 0,
+            unit: String(sq?.unit || 'units'),
+            context: String(sq?.context || ''),
+          }))
+        : [],
       primaryResource: {
-        resourceName: parsed.primaryResource?.resourceName || 'Nutritious Meals',
+        resourceName: String(parsed.primaryResource?.resourceName || 'Nutritious Meals'),
         quantityNeeded: Math.max(1, Math.min(500, Number(parsed.primaryResource?.quantityNeeded) || 1)),
-        unit: parsed.primaryResource?.unit || 'units',
-        category: parsed.primaryResource?.category || parsed.category || 'food_nutrition',
+        unit: String(parsed.primaryResource?.unit || 'units'),
+        category: [
+          'food_nutrition',
+          'medical_health',
+          'elderly_care',
+          'shelter_clothing',
+          'transport_logistics',
+          'emergency_repair',
+        ].includes(parsed.primaryResource?.category)
+          ? parsed.primaryResource.category
+          : parsed.category || 'food_nutrition',
       },
-      missingInformation: Array.isArray(parsed.missingInformation) ? parsed.missingInformation : [],
+      missingInformation: Array.isArray(parsed.missingInformation)
+        ? parsed.missingInformation.map((item: unknown) => String(item).trim()).filter(Boolean)
+        : [],
       uncertaintiesForHumanReview: Array.isArray(parsed.uncertaintiesForHumanReview)
-        ? parsed.uncertaintiesForHumanReview
+        ? parsed.uncertaintiesForHumanReview.map((item: unknown) => String(item).trim()).filter(Boolean)
         : [],
       proposedActionSteps: Array.isArray(parsed.proposedActionSteps)
-        ? parsed.proposedActionSteps
+        ? parsed.proposedActionSteps.map((pas: Record<string, unknown>, idx: number) => ({
+            stepNumber: Number(pas?.stepNumber) || idx + 1,
+            title: String(pas?.title || `Action Step ${idx + 1}`).trim(),
+            description: String(pas?.description || '').trim(),
+            requiredSkills: Array.isArray(pas?.requiredSkills)
+              ? pas.requiredSkills.map((s: unknown) => String(s).trim()).filter(Boolean)
+              : ['General Coordination'],
+            prerequisites: Array.isArray(pas?.prerequisites)
+              ? pas.prerequisites.map((p: unknown) => String(p).trim()).filter(Boolean)
+              : [],
+            estimatedMinutes: Math.max(5, Math.min(480, Number(pas?.estimatedMinutes) || 30)),
+          }))
         : [],
       requiredResourcesAndPrerequisites: Array.isArray(parsed.requiredResourcesAndPrerequisites)
-        ? parsed.requiredResourcesAndPrerequisites
+        ? parsed.requiredResourcesAndPrerequisites.map((item: unknown) => String(item).trim()).filter(Boolean)
         : [],
-      locationAreaSuggestion: parsed.locationAreaSuggestion || locationAreaHint || 'Downtown District',
+      locationAreaSuggestion: String(parsed.locationAreaSuggestion || locationAreaHint || 'Downtown District'),
       confidenceScore: 0.96,
       rawTextAnalyzed: description.trim(),
       analyzedAt: new Date().toISOString(),

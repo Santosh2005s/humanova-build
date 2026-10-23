@@ -4,11 +4,13 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const serverPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname || '.', '.'),
       },
     },
     server: {
@@ -17,6 +19,12 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api': {
+          target: `http://localhost:${serverPort}`,
+          changeOrigin: true,
+        },
+      },
     },
   };
 });
