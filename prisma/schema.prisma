@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SEEKER
+  VOLUNTEER
+  COORDINATOR
+}
+
+enum RequestStatus {
+  OPEN
+  PLANNED
+  ASSIGNED
+  IN_PROGRESS
+  BLOCKED
+  AWAITING_CONFIRMATION
+  RESOLVED
+  CANCELLED
+}
+
+enum TaskStatus {
+  PENDING
+  BLOCKED
+  READY
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NeedCategory {
+  FOOD_NUTRITION
+  MEDICAL_HEALTH
+  ELDERLY_CARE
+  SHELTER_CLOTHING
+  TRANSPORT_LOGISTICS
+  EMERGENCY_REPAIR
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AllocationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+}
+
+enum DependencyType {
+  TASK_PREREQUISITE
+  RESOURCE_STOCK
+  VOLUNTEER_QUALIFICATION
+  RECIPIENT_CONTACT
+}
+
+model User {
+  id               String             @id @default(cuid()) @db.VarChar(30)
+  name             String             @db.VarChar(160)
+  email            String?            @unique @db.VarChar(320)
+  role             UserRole           @default(SEEKER)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  volunteerProfile VolunteerProfile?
+  requests         CommunityRequest[] @relation("RequestCreator")
+
+  @@index([role, createdAt])
+}
+
+model VolunteerProfile {
+  userId              String             @id @db.VarChar(30)
+  phone               String?            @db.VarChar(64)
+  avatar              String?
+  availabilityStatus  AvailabilityStatus @default(AVAILABLE)
+  hoursPerWeek        Int                @default(0)
+  timeSlots           String[]           @default([])
+  rating              Float              @default(0)
+  completedTasksCount Int                @default(0)
+  verified            Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills              VolunteerSkill[]
+  serviceAreas        VolunteerServiceArea[]
+  assignments         VolunteerAssignment[]
+
+  @@index([availabilityStatus, verified])
+}
+
+model VolunteerSkill {
+  volunteerId String           @db.VarChar(30)
+  skill       String           @db.VarChar(100)
+  verified    Boolean          @default(false)
+  volunteer   VolunteerProfile @relation(fields: [volunteerId], references: [userId], onDelete: Cascade)
+
+  @@id([volunteerId, skill])
+  @@index([skill])
+}
+
+model VolunteerServiceArea {
+  volunteerId String           @db.VarChar(30)
+  area        String           @db.VarChar(120)
+  volunteer   VolunteerProfile @relation(fields: [volunteerId], references: [userId], onDelete: Cascade)
+
+  @@id([volunteerId, area])
+  @@index([area])
+}
+
+model CommunityRequest {
+  id                String                    @id @default(cuid()) @db.VarChar(30)
+  trackingCode      String                    @unique @db.VarChar(24)
+  title             String                    @db.VarChar(200)
+  description       String                    @db.Text
+  category          NeedCategory
+  urgency           UrgencyLevel               @default(MEDIUM)
+  locationArea      String                    @db.VarChar(160)
+  recipientName     String                    @db.VarChar(160)
+  recipientContact  String                    @db.VarChar(200)
+  status            RequestStatus             @default(OPEN)
+  isDemoSample      Boolean                   @default(false)
+  createdById       String?                   @db.VarChar(30)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  createdBy         User?                     @relation("RequestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  resourcesNeeded   ResourceRequirement[]
+  tasks             ActionTask[]
+  outcomeConfirmation OutcomeConfirmation?
+
+  @@index([status, urgency, createdAt])
+  @@index([locationArea, createdAt])
+}
+
+model Resource {
+  id            String                @id @default(cuid()) @db.VarChar(30)
+  name          String                @db.VarChar(160)
+  category      NeedCategory
+  unit          String                @db.VarChar(40)
+  totalAvailable Int                  @default(0)
+  allocated     Int                   @default(0)
+  notes         String?               @db.Text
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  requirements  ResourceRequirement[]
+  tasks         ActionTask[]          @relation("TaskResource")
+  taskPrerequisites TaskPrerequisite[]
+
+  @@unique([name, unit])
+  @@index([category, name])
+}
+
+model ResourceRequirement {
+  id             String              @id @default(cuid()) @db.VarChar(30)
+  requestId      String              @db.VarChar(30)
+  resourceId     String              @db.VarChar(30)
+  quantityNeeded Int
+  request        CommunityRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  resource       Resource            @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  allocations    ResourceAllocation[]
+
+  @@unique([requestId, resourceId])
+  @@index([resourceId, quantityNeeded])
+}
+
+model ResourceAllocation {
+  id            String             @id @default(cuid()) @db.VarChar(30)
+  requirementId String             @db.VarChar(30)
+  quantity      Int
+  status        AllocationStatus   @default(ACTIVE)
+  allocatedAt   DateTime           @default(now())
+  releasedAt    DateTime?
+  requirement   ResourceRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@index([requirementId, status])
+}
+
+model ActionTask {
+  id                       String              @id @default(cuid()) @db.VarChar(30)
+  requestId                String              @db.VarChar(30)
+  order                    Int
+  title                    String              @db.VarChar(200)
+  description              String              @db.Text
+  requiredSkills           String[]
+  estimatedMinutes         Int                 @default(30)
+  requiredResourceId       String?             @db.VarChar(30)
+  requiredResourceQuantity Int?
+  status                   TaskStatus          @default(PENDING)
+  blockedReason            String?             @db.Text
+  startedAt                DateTime?
+  completedAt              DateTime?
+  notes                    String?             @db.Text
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  request                  CommunityRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requiredResource         Resource?           @relation("TaskResource", fields: [requiredResourceId], references: [id], onDelete: SetNull)
+  dependencies             TaskDependency[]    @relation("DependentTask")
+  dependents               TaskDependency[]    @relation("PrerequisiteTask")
+  prerequisites            TaskPrerequisite[]
+  targetedPrerequisites    TaskPrerequisite[]  @relation("PrerequisiteTarget")
+  assignments              VolunteerAssignment[]
+
+  @@unique([requestId, order])
+  @@index([requestId, status, order])
+  @@index([requiredResourceId])
+}
+
+model TaskDependency {
+  prerequisiteTaskId String     @db.VarChar(30)
+  dependentTaskId    String     @db.VarChar(30)
+  createdAt          DateTime   @default(now())
+  prerequisiteTask   ActionTask @relation("PrerequisiteTask", fields: [prerequisiteTaskId], references: [id], onDelete: Cascade)
+  dependentTask      ActionTask @relation("DependentTask", fields: [dependentTaskId], references: [id], onDelete: Cascade)
+
+  @@id([prerequisiteTaskId, dependentTaskId])
+  @@index([dependentTaskId])
+}
+
+model TaskPrerequisite {
+  id               String         @id @default(cuid()) @db.VarChar(30)
+  taskId           String         @db.VarChar(30)
+  type             DependencyType
+  title            String         @db.VarChar(160)
+  details          String         @db.Text
+  targetTaskId     String?        @db.VarChar(30)
+  targetResourceId String?        @db.VarChar(30)
+  task             ActionTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  targetTask       ActionTask?    @relation("PrerequisiteTarget", fields: [targetTaskId], references: [id], onDelete: SetNull)
+  targetResource   Resource?      @relation(fields: [targetResourceId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, type])
+  @@index([targetTaskId])
+}
+
+model VolunteerAssignment {
+  id          String           @id @default(cuid()) @db.VarChar(30)
+  taskId      String           @db.VarChar(30)
+  volunteerId String           @db.VarChar(30)
+  status      AssignmentStatus @default(ACTIVE)
+  assignedAt  DateTime         @default(now())
+  releasedAt  DateTime?
+  task        ActionTask       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  volunteer   VolunteerProfile @relation(fields: [volunteerId], references: [userId], onDelete: Restrict)
+
+  @@index([taskId, status])
+  @@index([volunteerId, status])
+}
+
+model OutcomeConfirmation {
+  id           String           @id @default(cuid()) @db.VarChar(30)
+  requestId    String           @unique @db.VarChar(30)
+  confirmed    Boolean
+  feedback     String?          @db.Text
+  disputed     Boolean          @default(false)
+  disputeReason String?         @db.Text
+  confirmedAt  DateTime         @default(now())
+  request      CommunityRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+

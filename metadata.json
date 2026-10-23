@@ -1,0 +1,6 @@
+{
+  "name": "HUMANOVA — AI Community Coordination Platform",
+  "description": "Dependency-aware community coordination platform transforming real-world needs into structured action plans, resolving resource shortages, and tracking verified outcomes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
