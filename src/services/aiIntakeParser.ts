@@ -203,89 +203,88 @@ export function parseIntakeRuleBased(
 }
 
 /**
- * Optional Gemini AI Parser to enrich unstructured requests when GEMINI_API_KEY is available.
- * Transparently falls back to rule-based parser on any error or missing key.
+ * Checks server-side Gemini availability and configuration status.
  */
-export async function parseWithGeminiIfAvailable(
-  rawText: string,
-  location?: string
-): Promise<ParsedNeedIntake> {
-  const apiKey = (typeof window !== 'undefined' && (window as unknown as { __GEMINI_KEY__?: string }).__GEMINI_KEY__) ||
-    (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
-
-  if (!apiKey) {
-    return parseIntakeRuleBased(rawText, location);
-  }
-
+export async function checkGeminiServerStatus(): Promise<{
+  configured: boolean;
+  model: string;
+  status: 'ready' | 'unconfigured';
+  message: string;
+}> {
   try {
-    const { GoogleGenAI, Type } = await import('@google/genai');
-    const ai = new GoogleGenAI({ apiKey });
+    const res = await fetch('/api/gemini/status', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    return {
+      configured: false,
+      model: 'gemini-3.8-flash',
+      status: 'unconfigured',
+      message: err instanceof Error ? err.message : 'Unable to connect to AI server route.',
+    };
+  }
+}
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: `You are the Humanova community crisis dispatcher. Analyze this community help request and extract structured information.
-Request text: "${rawText}"
-Location hint: "${location || 'Not specified'}"`,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            category: {
-              type: Type.STRING,
-              enum: [
-                'food_nutrition',
-                'medical_health',
-                'elderly_care',
-                'shelter_clothing',
-                'transport_logistics',
-                'emergency_repair'
-              ]
-            },
-            urgency: {
-              type: Type.STRING,
-              enum: ['low', 'medium', 'high', 'critical']
-            },
-            quantityNeeded: { type: Type.INTEGER },
-            resourceName: { type: Type.STRING },
-            unit: { type: Type.STRING },
-            locationArea: { type: Type.STRING },
-            identifiedSkills: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            missingInformation: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: [
-            'title',
-            'category',
-            'urgency',
-            'quantityNeeded',
-            'resourceName',
-            'unit',
-            'locationArea',
-            'identifiedSkills',
-            'missingInformation'
-          ]
-        }
-      }
+export interface AnalyzeNeedParams {
+  description: string;
+  locationAreaHint?: string;
+  recipientNameHint?: string;
+}
+
+export interface AnalyzeNeedResult {
+  success: boolean;
+  data?: import('../types').AiAnalyzedNeed;
+  error?: string;
+  message?: string;
+  setupInstructions?: string;
+  canRetry?: boolean;
+}
+
+/**
+ * Calls server-side Gemini 3.8 Flash endpoint to analyze natural-language requests.
+ * Securely communicates with the backend without exposing keys.
+ */
+export async function analyzeNeedWithGeminiServer(
+  params: AnalyzeNeedParams
+): Promise<AnalyzeNeedResult> {
+  try {
+    const res = await fetch('/api/gemini/analyze-need', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(params),
     });
 
-    if (response.text) {
-      const parsed = JSON.parse(response.text);
+    const json = await res.json();
+
+    if (!res.ok || !json.success) {
       return {
-        ...parsed,
-        resourceCategory: parsed.category,
-        confidence: 0.98
+        success: false,
+        error: json.error || 'SERVER_ERROR',
+        message: json.message || `Server returned error (${res.status})`,
+        setupInstructions: json.setupInstructions,
+        canRetry: json.canRetry ?? true,
       };
     }
-  } catch (err) {
-    console.warn('AI intake fallback to deterministic rule parser:', err);
-  }
 
-  return parseIntakeRuleBased(rawText, location);
+    return {
+      success: true,
+      data: json.data,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Network error communicating with AI server.';
+    return {
+      success: false,
+      error: 'NETWORK_ERROR',
+      message: `Failed to reach server: ${message}`,
+      canRetry: true,
+    };
+  }
 }
+

@@ -178,3 +178,62 @@ export interface ParsedNeedIntake {
   missingInformation: string[];
   confidence: number;
 }
+
+export interface StatedQuantity {
+  resourceType: string;
+  quantityNeeded: number;
+  quantityAvailable: number;
+  unit: string;
+  context: string;
+}
+
+export interface ProposedActionStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  requiredSkills: string[];
+  prerequisites: string[];
+  estimatedMinutes: number;
+}
+
+export interface AiAnalyzedNeed {
+  title: string;
+  summary: string;
+  category: NeedCategory;
+  urgency: UrgencyLevel;
+  urgencyExplanation: string;
+  statedQuantities: StatedQuantity[];
+  primaryResource: {
+    resourceName: string;
+    quantityNeeded: number;
+    unit: string;
+    category: NeedCategory;
+  };
+  missingInformation: string[];
+  uncertaintiesForHumanReview: string[];
+  proposedActionSteps: ProposedActionStep[];
+  requiredResourcesAndPrerequisites: string[];
+  locationAreaSuggestion?: string;
+  confidenceScore: number;
+  rawTextAnalyzed?: string;
+  analyzedAt?: string;
+  modelUsed?: string;
+  isAiGenerated: true;
+}
+
+export interface AiStatusResponse {
+  configured: boolean;
+  model: string;
+  status: 'ready' | 'unconfigured';
+  message: string;
+}
+
+export interface AiAnalysisApiResponse {
+  success: boolean;
+  data?: AiAnalyzedNeed;
+  error?: string;
+  message?: string;
+  setupInstructions?: string;
+  canRetry?: boolean;
+}
+

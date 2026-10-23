@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { CommunityRequest, NeedCategory, UrgencyLevel } from '../../types';
-import { parseIntakeRuleBased, parseWithGeminiIfAvailable } from '../../services/aiIntakeParser';
+import { parseIntakeRuleBased } from '../../services/aiIntakeParser';
 import { HumanovaStore } from '../../services/store';
 import { StatusBadge } from '../common/StatusBadge';
 import { RecipientConfirmModal } from './RecipientConfirmModal';
+import { AiDescribeNeedPanel } from './AiDescribeNeedPanel';
 import {
   AlertCircle,
   AlertTriangle,
@@ -14,7 +15,9 @@ import {
   MapPin,
   Send,
   Sparkles,
-  UserCheck
+  UserCheck,
+  Wand2,
+  FileText
 } from 'lucide-react';
 
 interface SeekerViewProps {
@@ -23,13 +26,15 @@ interface SeekerViewProps {
 }
 
 export const SeekerView: React.FC<SeekerViewProps> = ({ requests, onOpenPlanner }) => {
+  // Intake Mode: 'ai' (Describe Your Need with AI) or 'manual' (Direct Form)
+  const [intakeMode, setIntakeMode] = useState<'ai' | 'manual'>('ai');
+
   // Form State
   const [description, setDescription] = useState<string>('');
   const [locationArea, setLocationArea] = useState<string>('Downtown District');
   const [recipientName, setRecipientName] = useState<string>('');
   const [recipientContact, setRecipientContact] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isAiAnalyzing, setIsAiAnalyzing] = useState<boolean>(false);
   const [createdRequest, setCreatedRequest] = useState<CommunityRequest | null>(null);
   const [confirmingRequestId, setConfirmingRequestId] = useState<string | null>(null);
 
@@ -47,18 +52,6 @@ export const SeekerView: React.FC<SeekerViewProps> = ({ requests, onOpenPlanner 
     setLocationArea(area);
     setRecipientName(name);
     setRecipientContact(contact);
-  };
-
-  const handleAiEnrich = async () => {
-    if (!description.trim()) return;
-    setIsAiAnalyzing(true);
-    try {
-      const result = await parseWithGeminiIfAvailable(description, locationArea);
-      // If AI detected better location or title
-      if (result.locationArea) setLocationArea(result.locationArea);
-    } finally {
-      setIsAiAnalyzing(false);
-    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -121,8 +114,51 @@ export const SeekerView: React.FC<SeekerViewProps> = ({ requests, onOpenPlanner 
         </div>
       )}
 
-      {/* Grid: Request Submission Form (Left) & Live Intake Intelligence Preview (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Intake Mode Switcher Tabs */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIntakeMode('ai')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              intakeMode === 'ai'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Describe Your Need with AI
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIntakeMode('manual')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              intakeMode === 'manual'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Direct Intake & Rule Parser
+          </button>
+        </div>
+
+        <span className="text-[11px] text-slate-500 hidden sm:inline">
+          {intakeMode === 'ai'
+            ? 'Powered by server-side Gemini 3.8 Flash'
+            : 'Deterministic offline intake engine'}
+        </span>
+      </div>
+
+      {intakeMode === 'ai' ? (
+        <AiDescribeNeedPanel
+          onRequestCreated={(req) => setCreatedRequest(req)}
+          onSwitchToManual={() => setIntakeMode('manual')}
+        />
+      ) : (
+        /* Grid: Request Submission Form (Left) & Live Intake Intelligence Preview (Right) */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Request Form (7 cols) */}
         <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
           <div>
@@ -194,12 +230,11 @@ export const SeekerView: React.FC<SeekerViewProps> = ({ requests, onOpenPlanner 
                 </label>
                 <button
                   type="button"
-                  onClick={handleAiEnrich}
-                  disabled={isAiAnalyzing || !description.trim()}
-                  className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                  onClick={() => setIntakeMode('ai')}
+                  className="text-[11px] text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer font-medium"
                 >
                   <Sparkles className="w-3 h-3" />
-                  {isAiAnalyzing ? 'Analyzing with AI...' : 'Analyze with AI'}
+                  Describe with AI instead
                 </button>
               </div>
               <textarea
@@ -348,6 +383,7 @@ export const SeekerView: React.FC<SeekerViewProps> = ({ requests, onOpenPlanner 
           </div>
         </div>
       </div>
+      )}
 
       {/* Community Requests Tracker & Recipient Confirmation Section */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 space-y-4">
